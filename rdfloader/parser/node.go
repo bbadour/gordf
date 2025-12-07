@@ -1,6 +1,9 @@
 package parser
 
-import "fmt"
+import (
+	"fmt"
+	"sync/atomic"
+)
 
 type NODETYPE string
 
@@ -22,14 +25,18 @@ func (node *Node) String() string {
 }
 
 type BlankNodeGetter struct {
-	lastid int
+	lastid atomic.Int64
+}
+
+func (getter *BlankNodeGetter) set(i int) {
+	getter.lastid.Store(int64(i))
 }
 
 func (getter *BlankNodeGetter) Get() Node {
-	getter.lastid += 1
+	lastid := getter.lastid.Add(1)
 	return Node{
 		NodeType: BLANK,
-		ID:       fmt.Sprintf("N%v", getter.lastid),
+		ID:       fmt.Sprintf("N%v", lastid),
 	}
 }
 

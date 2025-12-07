@@ -90,17 +90,19 @@ func getLastURI(tag xmlreader.Tag, lastURI string) string {
 func New() (parser *Parser) {
 	// creates a new parser object
 	rdfNS, _ := uri.NewURIRef(RDFNS)
-	return &Parser{
+	parser = &Parser{
 		setTriples:       map[string]*Triple{},
 		setNodes:         map[string]*Node{},
 		Triples:          []*Triple{},
 		writeLock:        sync.RWMutex{},
 		nodesWriteLock:   sync.RWMutex{},
 		SchemaDefinition: map[string]uri.URIRef{"": uri.URIRef{}},
-		blankNodeGetter:  BlankNodeGetter{-1},
+		blankNodeGetter:  BlankNodeGetter{},
 		wg:               sync.WaitGroup{},
 		rdfNS:            rdfNS,
 	}
+	parser.blankNodeGetter.set(-1)
+	return parser
 }
 
 func (parser *Parser) parseBlock(currBlock *xmlreader.Block, node *Node, lastURI string, errp *error) {
@@ -133,13 +135,23 @@ func (parser *Parser) parseBlock(currBlock *xmlreader.Block, node *Node, lastURI
 	*/
 	node = parser.resolveNode(node)
 	defer parser.wg.Done()
+	setError := func(err error) {
+		parser.writeLock.Lock()
+		defer parser.writeLock.Unlock()
+		*errp = err
+	}
+	getError := func() error {
+		parser.writeLock.RLock()
+		defer parser.writeLock.RUnlock()
+		return *errp
+	}
 	lastURI = getLastURI(currBlock.OpeningTag, lastURI)
 	if len(currBlock.Children) == 0 {
 		// adding only one triple which identifies the type of the current block.
 		predicateURI := parser.rdfNS.AddFragment("type")
 		openingTagUri, newErr := parser.uriFromPair(currBlock.OpeningTag.SchemaName, currBlock.OpeningTag.Name)
 		if newErr != nil {
-			*errp = newErr
+			setError(newErr)
 			return
 		}
 		parser.appendTriple(&Triple{
@@ -154,14 +166,14 @@ func (parser *Parser) parseBlock(currBlock *xmlreader.Block, node *Node, lastURI
 		//     according to https://www.w3.org/TR/rdf-concepts/#dfn-predicate
 		predicateURI, newErr := parser.uriFromPair(predicateBlock.OpeningTag.SchemaName, predicateBlock.OpeningTag.Name)
 		if newErr != nil {
-			*errp = fmt.Errorf("error creating a reference URI link for the predicate block. %v", newErr)
+			setError(fmt.Errorf("error creating a reference URI link for the predicate block. %v", newErr))
 			return
 		}
 		predicateNode := &Node{NodeType: IRI, ID: predicateURI.String()}
 
 		openingTagUri, newErr := parser.uriFromPair(currBlock.OpeningTag.SchemaName, currBlock.OpeningTag.Name)
 		if newErr != nil {
-			*errp = newErr
+			setError(newErr)
 			return
 		}
 
@@ -180,13 +192,13 @@ func (parser *Parser) parseBlock(currBlock *xmlreader.Block, node *Node, lastURI
 				Object:    nil,
 			}
 			resIdx, newErr := parser.getRDFAttributeIndex(predicateBlock.OpeningTag, "resource")
-			*errp = newErr
-			if *errp != nil {
+			if newErr != nil{
+				setError(newErr)
 				return
 			}
 			nodeidIdx, newErr := parser.getRDFAttributeIndex(predicateBlock.OpeningTag, "nodeID")
-			*errp = newErr
-			if *errp != nil {
+			if newErr != nil{
+				setError(newErr)
 				return
 			}
 
@@ -220,7 +232,7 @@ func (parser *Parser) parseBlock(currBlock *xmlreader.Block, node *Node, lastURI
 		for _, objectBlock := range predicateBlock.Children {
 			objectNode, newErr := parser.nodeFromTag(objectBlock.OpeningTag, lastURI)
 			if newErr != nil {
-				*errp = newErr
+				setError(newErr)
 				return
 			}
 
@@ -231,7 +243,7 @@ func (parser *Parser) parseBlock(currBlock *xmlreader.Block, node *Node, lastURI
 			})
 			parser.wg.Add(1)
 			go parser.parseBlock(objectBlock, objectNode, lastURI, errp)
-			if *errp != nil {
+			if getError() != nil {
 				return
 			}
 		}
@@ -246,19 +258,25 @@ func (parser *Parser) Parse(rootBlock xmlreader.Block) (err error) {
 	}
 	parser.SchemaDefinition = schemaDefinition
 
+	getError := func() error {
+		parser.writeLock.RLock()
+		defer parser.writeLock.RUnlock()
+		return err
+	}
 	// root tag is set now.
 	var childNode *Node
+	var lerr error
 	xmlns := schemaDefinition[""]
 	xmlnsString := xmlns.String()
 	for _, child := range rootBlock.Children {
-		childNode, err = parser.nodeFromTag(child.OpeningTag, xmlnsString)
-		if err != nil {
-			return err
+		childNode, lerr = parser.nodeFromTag(child.OpeningTag, xmlnsString)
+		if lerr != nil {
+			return lerr
 		}
 		parser.wg.Add(1)
 		go parser.parseBlock(child, childNode, xmlnsString, &err)
-		if err != nil {
-			return err
+		if lerr := getError(); lerr != nil {
+			return lerr
 		}
 	}
 	parser.wg.Wait() // wait for all the go routines to finish executing.

@@ -23,10 +23,10 @@ func TestBlankNodeGetter_Get(t *testing.T) {
 	}
 
 	// blank node getter with custom lastid.
-	blankNodeGetter = BlankNodeGetter{
-		lastid: -1,
-	}
+	blankNodeGetter = BlankNodeGetter{}
+
 	// last id -1 means that first node should start from N0
+	blankNodeGetter.set(-1)
 	firstBlankNode = blankNodeGetter.Get()
 	if firstBlankNode.ID != "N0" {
 		t.Errorf("Expected node to be %v, found %v", "N0", firstBlankNode.ID)
