@@ -136,6 +136,18 @@ func TestTopologicalSortTriples(t *testing.T) {
 		{Subject: nodes[0], Predicate: nodes[2], Object: nodes[3]},
 		{Subject: nodes[3], Predicate: nodes[4], Object: nodes[0]},
 	}
+	t.Logf("Got %d sortedTriples:", len(sortedTriples))
+	for k, v := range sortedTriples {
+			t.Logf("  sortedTriples[%v]=%s", k, v)
+	}
+	t.Logf("Want %d expectedTriples", len(expectedTriples))
+	for k, v := range expectedTriples {
+			t.Logf("  expectedTriples[%v]=%s", k, v)
+	}
+	t.Logf("Or %d anotherConfig", len(anotherConfig))
+	for k, v := range anotherConfig {
+			t.Logf("  anotherConfig[%v]=%s", k, v)
+	}
 	if !reflect.DeepEqual(sortedTriples, expectedTriples) && !reflect.DeepEqual(sortedTriples, anotherConfig) {
 		t.Errorf("sorted triples are not in correct order")
 	}

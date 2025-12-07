@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/spdx/gordf/rdfloader/parser"
 	"github.com/spdx/gordf/uri"
+	"slices"
 	"strings"
 )
 
@@ -80,6 +81,16 @@ func getUniqueTriples(triples []*parser.Triple) []*parser.Triple {
 	for key := range set {
 		retList = append(retList, set[key])
 	}
+	slices.SortFunc(retList, func(a, b *parser.Triple) int {
+		c := strings.Compare(a.Subject.String(), b.Subject.String())
+		if c == 0 {
+			c = strings.Compare(a.Predicate.String(), b.Predicate.String())
+		}
+		if c == 0 {
+			c = strings.Compare(a.Object.String(), b.Predicate.String())
+		}
+		return c
+	})
 	return retList
 }
 
